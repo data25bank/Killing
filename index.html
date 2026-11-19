@@ -317,7 +317,13 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_D
   maxZoom:16, pane:"shadowPane"
 }).addTo(map);
 
-const cluster = L.markerClusterGroup({chunkedLoading:true,showCoverageOnHover:false,maxClusterRadius:38,spiderfyOnMaxZoom:true});
+const cluster = L.markerClusterGroup({
+  chunkedLoading:true, showCoverageOnHover:false, maxClusterRadius:38, spiderfyOnMaxZoom:true,
+  iconCreateFunction: c => {
+    const n = c.getAllChildMarkers().reduce((s,m)=>s+(m.options.count||1),0);
+    return L.divIcon({html:`<div>${n}</div>`, className:'marker-cluster', iconSize:L.point(40,40)});
+  }
+});
 map.addLayer(cluster);
 
 /* ================= STATE ================= */
@@ -562,10 +568,12 @@ function drawMarkers(list){
     const dom = Object.keys(tally).sort((a,b)=>tally[b]-tally[a])[0];
     const color = CATS[dom].color;
 
-    const m = L.circleMarker([items[0].lat,items[0].lng],{
+     const m = L.circleMarker([items[0].lat,items[0].lng],{
       radius: 6 + Math.min(items.length-1,6),
-      fillColor: color, color:"#000", weight:1, fillOpacity:.9
+      fillColor: color, color:"#000", weight:1, fillOpacity:.9,
+      count: items.length
     });
+
     m.bindPopup(()=>popupHTML(items),{maxWidth:340});
     layers.push(m);
   });
