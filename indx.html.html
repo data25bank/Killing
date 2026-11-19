@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Martyrs Map — Palestine</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&family=Noto+Naskh+Arabic:wght@500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#101010; --line:#242424; --muted:#8a8a8a; --text:#ededed;
+    --red:#e63946; --boy:#f2c14e; --girl:#f28fad; --woman:#4fc3a1; --man:#e63946; --unk:#8a8a8a;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;display:flex;overflow:hidden}
+
+  /* ---------- Sidebar ---------- */
+  #sidebar{width:390px;max-width:100%;height:100vh;overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);
+    border-top:3px solid var(--red);padding:22px 22px 28px;z-index:1000;flex-shrink:0}
+  #sidebar::-webkit-scrollbar{width:6px} #sidebar::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+  .eyebrow{font:700 10px 'JetBrains Mono',monospace;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+  h1{font:italic 500 40px/1.05 'Playfair Display',serif;color:var(--red);margin:6px 0 4px}
+  .sub{font:500 11px 'JetBrains Mono',monospace;letter-spacing:.12em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .sub:before{content:"";width:14px;height:2px;background:var(--red)}
+  .updated{margin-top:10px;font:500 11px 'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--muted)}
+  .updated b{color:var(--text);font-weight:700}
+
+  .total{margin:22px 0 12px;display:flex;align-items:baseline;gap:10px}
+  .total b{font:600 44px 'Playfair Display',serif}
+  .total span{font:500 11px 'JetBrains Mono',monospace;color:var(--red);letter-spacing:.14em;text-transform:uppercase}
+  .total small{margin-left:auto;color:var(--muted);font-size:11px}
+
+  /* ---------- Stat cards ---------- */
+  .stats{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line)}
+  .stat{background:#0c0c0c;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 14px 12px;text-align:left;color:var(--text);cursor:pointer;position:relative;transition:background .2s}
+  .stat:nth-child(2n){border-right:0} .stat:nth-last-child(-n+2){border-bottom:0}
+  .stat:hover{background:#151515}
+  .stat .n{font:600 34px/1 'Playfair Display',serif}
+  .stat .l{margin-top:7px;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--c)}
+  .stat:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c);opacity:.35;transition:opacity .2s}
+  .stat.active{background:#171717} .stat.active:before{opacity:1}
+  .stat.dim{opacity:.45}
+  .hint{margin:8px 0 0;font-size:11px;color:var(--muted)}
+
+  /* ---------- Filters ---------- */
+  .section{margin-top:26px}
+  .section h3{margin:0 0 10px;font:700 10px 'JetBrains Mono',monospace;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+  .section h3:after{content:"";flex:1;height:1px;background:var(--line)}
+  .field{width:100%;background:#181818;border:1px solid var(--line);color:var(--text);padding:10px 12px;font:inherit;font-size:14px;border-radius:4px;outline:none;transition:border-color .2s}
+  .field:focus{border-color:var(--red)}
+  input[type=date]{color-scheme:dark}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chips.scroll{max-height:170px;overflow-y:auto;padding-right:4px}
+  .chips.scroll::-webkit-scrollbar{width:5px} .chips.scroll::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+  .chip{background:#181818;border:1px solid var(--line);color:#cfcfcf;padding:6px 10px;font:500 12px 'Inter','Noto Naskh Arabic',sans-serif;border-radius:999px;cursor:pointer;transition:all .15s}
+  .chip:hover{border-color:#555}
+  .chip em{font-style:normal;color:var(--muted);margin-left:5px;font-size:11px}
+  .chip.on{background:var(--red);border-color:var(--red);color:#fff}
+  .chip.on em{color:#ffd9dc}
+  .warn{font-size:11px;color:#c9a227;margin:0 0 8px}
+
+  #reset{width:100%;margin-top:24px;background:transparent;color:var(--text);border:1px solid #3a3a3a;padding:11px;font:700 11px 'JetBrains Mono',monospace;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;border-radius:4px;transition:all .2s}
+  #reset:hover{background:var(--red);border-color:var(--red)}
+  .note{margin-top:22px;font-size:11px;line-height:1.5;color:var(--muted)}
+
+  /* ---------- Map ---------- */
+  #main{flex:1;height:100vh;position:relative;min-width:0}
+  #map{width:100%;height:100%;background:#0d0d0d}
+  .leaflet-container{font-family:'Inter',sans-serif}
+  .leaflet-control-zoom a{background:#111!important;color:#fff!important;border-color:#333!important}
+  .leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:#777!important}
+  .leaflet-control-attribution a{color:#999!important}
+
+  .leaflet-popup-content-wrapper{background:#121212;color:var(--text);border:1px solid #2c2c2c;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  .leaflet-popup-tip{background:#121212}
+  .leaflet-popup-close-button{color:#999!important}
+  .leaflet-popup-content{margin:0;min-width:250px}
+  .pop-scroll{max-height:280px;overflow-y:auto;padding:4px 16px}
+  .pop-scroll::-webkit-scrollbar{width:5px} .pop-scroll::-webkit-scrollbar-thumb{background:#333}
+  .pop{padding:12px 0;border-bottom:1px solid #222}
+  .pop:last-child{border-bottom:0}
+  .pop .name{font:700 17px/1.3 'Noto Naskh Arabic','Inter',serif;margin-bottom:6px;unicode-bidi:plaintext}
+  .pop .tag{display:inline-block;font:700 9px 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;padding:2px 7px;border-radius:2px;color:#000;margin:0 6px 8px 0}
+  .pop .tag.w{background:#e63946;color:#fff}
+  .pop dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}
+  .pop dt{color:var(--muted)} .pop dd{margin:0;unicode-bidi:plaintext}
+  .pop-count{padding:10px 16px 0;font:700 10px 'JetBrains Mono',monospace;letter-spacing:.16em;color:var(--red);text-transform:uppercase}
+
+  .marker-cluster{background:rgba(230,57,70,.25)!important;border-radius:50%}
+  .marker-cluster div{width:30px;height:30px;margin:5px;text-align:center;border-radius:50%;line-height:30px;background:rgba(230,57,70,.9)!important;color:#fff;font:700 12px/30px 'JetBrains Mono',monospace}
+
+  #status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,10,10,.85);z-index:2000;
+    font:700 12px 'JetBrains Mono',monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);text-align:center;padding:20px}
+  #status.hide{display:none}
+
+  /* ---------- Timeline panel (bottom of map) ---------- */
+  #tl{position:absolute;left:12px;right:12px;bottom:12px;z-index:1100;pointer-events:none}
+  #tl > *{pointer-events:auto}
+  #tlToggle{display:inline-flex;align-items:center;gap:8px;background:#1b2433;border:1px solid #2f3e57;color:#e8eefc;
+    padding:7px 14px;border-radius:8px;font:600 13px 'Inter',sans-serif;cursor:pointer}
+  #tlToggle svg{width:12px;height:12px;transition:transform .2s}
+  #tl.closed #tlToggle svg{transform:rotate(-90deg)}
+  #tlBody{margin-top:8px;background:rgba(14,15,19,.95);border:1px solid #23262e;border-radius:10px;padding:12px 16px 10px;backdrop-filter:blur(4px)}
+  #tl.closed #tlBody{display:none}
+  .tl-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .tl-eyebrow{font:500 10px 'Inter',sans-serif;letter-spacing:.12em;color:#8a93a3;text-transform:uppercase}
+  .tl-title{margin-top:4px;font:600 17px 'Inter',sans-serif;display:flex;align-items:baseline;gap:10px}
+  .tl-title small{font:400 12px 'Inter',sans-serif;color:#8a93a3}
+  .tl-ctrl{display:flex;gap:8px}
+  .tl-btn{background:#171a21;border:1px solid #2b303b;color:#e6e9f0;padding:7px 12px;border-radius:7px;font:500 13px 'Inter',sans-serif;cursor:pointer;min-width:34px}
+  .tl-btn:hover{border-color:#4a5568}
+  .tl-btn.on{background:#1b2433;border-color:#3d5a8a}
+  #tlBars{display:flex;align-items:flex-end;gap:2px;height:40px;margin-top:10px;padding:0 2px}
+  #tlBars .b{flex:1;min-width:2px;background:#6b788d;border-radius:1px 1px 0 0;cursor:pointer;transition:background .15s}
+  #tlBars .b.z{background:#2b3140;height:1px!important}
+  #tlBars .b.off{background:#343b49}
+  #tlBars .b:hover{background:#9db0cf}
+  #tlRange{width:100%;margin:6px 0 0;-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:#e9ecf2;outline:none;display:block}
+  #tlRange::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:#3f5ea8;border:2px solid #7b95d4;cursor:pointer}
+  #tlRange::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#3f5ea8;border:2px solid #7b95d4;cursor:pointer}
+  .tl-ends{display:flex;justify-content:space-between;font-size:10px;color:#8a93a3;margin-top:6px}
+  .tl-foot{margin-top:3px;font-size:10px;color:#6f7889}
+
+  @media (max-width:800px){
+    body{flex-direction:column-reverse;overflow:auto}
+    #sidebar{width:100%;height:auto;border-right:0}
+    #main{height:70vh;flex:none}
+  }
+</style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="eyebrow">Memorial archive</div>
+  <h1>Martyrs Map</h1>
+  <div class="sub">Palestine</div>
+  <div class="updated" id="updated"></div>
+
+  <div class="total"><b id="total">0</b><span>Martyrs shown</span><small id="noloc"></small></div>
+
+  <div class="stats" id="stats">
+    <button class="stat" data-cat="boy"   style="--c:var(--boy)">  <div class="n" id="c-boy">0</div>  <div class="l">Boys</div></button>
+    <button class="stat" data-cat="girl"  style="--c:var(--girl)"> <div class="n" id="c-girl">0</div> <div class="l">Girls</div></button>
+    <button class="stat" data-cat="woman" style="--c:var(--woman)"><div class="n" id="c-woman">0</div><div class="l">Women</div></button>
+    <button class="stat" data-cat="man"   style="--c:var(--man)">  <div class="n" id="c-man">0</div>  <div class="l">Men</div></button>
+  </div>
+  <p class="hint">Click a card to filter the map by that group.</p>
+
+  <div class="section">
+    <h3>Search by name</h3>
+    <input id="q" class="field" type="text" placeholder="Type part of a name (Arabic)…" autocomplete="off" />
+  </div>
+
+  <div class="section">
+    <h3>Governorate of killing</h3>
+    <div class="chips" id="govChips"></div>
+  </div>
+
+  <div class="section">
+    <h3>Body withheld</h3>
+    <p class="warn" id="warn-withheld" hidden></p>
+    <div class="chips" id="withheldChips"></div>
+  </div>
+
+  <div class="section">
+    <h3>Perpetrator</h3>
+    <p class="warn" id="warn-perp" hidden></p>
+    <div class="chips scroll" id="perpChips"></div>
+  </div>
+
+  <div class="section">
+    <h3>Killing tool</h3>
+    <p class="warn" id="warn-tool" hidden></p>
+    <div class="chips scroll" id="toolChips"></div>
+  </div>
+
+  <div class="section">
+    <h3>Date of killing</h3>
+    <div class="row">
+      <div><label for="from">From</label><input id="from" class="field" type="date"></div>
+      <div><label for="to">To</label><input id="to" class="field" type="date"></div>
+    </div>
+  </div>
+
+  <button id="reset">Clear all filters</button>
+  <p class="note">Circles are coloured by group. Nearby points are clustered — zoom in or click a cluster to expand it. Use the timeline at the bottom of the map to step through months or press Play.</p>
+</aside>
+
+<div id="main">
+  <div id="map"><div id="status">Loading data…</div></div>
+
+  <!-- Timeline -->
+  <div id="tl">
+    <button id="tlToggle" type="button">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg>
+      Timeline
+    </button>
+    <div id="tlBody">
+      <div class="tl-top">
+        <div>
+          <div class="tl-eyebrow">Incidents over time</div>
+          <div class="tl-title"><span id="tlLabel">All months</span><small id="tlCount"></small></div>
+        </div>
+        <div class="tl-ctrl">
+          <button class="tl-btn" id="tlPrev" type="button" aria-label="Previous month">‹</button>
+          <button class="tl-btn" id="tlPlay" type="button">Play</button>
+          <button class="tl-btn" id="tlNext" type="button" aria-label="Next month">›</button>
+          <button class="tl-btn on" id="tlAll" type="button">All months</button>
+        </div>
+      </div>
+      <div id="tlBars"></div>
+      <input id="tlRange" type="range" min="0" max="0" value="0" step="1">
+      <div class="tl-ends"><span id="tlMin"></span><span id="tlMax"></span></div>
+      <div class="tl-foot" id="tlFoot"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const DATA_URL = "https://script.google.com/macros/s/AKfycbwhDfJlpNPUu4vPeJuDdAU5zjT5dTCYW61HiRr_jYCPwFQaoaecINruTsUgMdb-A92OtA/exec";
+
+// field names in your sheet
+const F = {
+  name:"Name", fileTitle:"عنوان الملف", age:"العمر", residence:"محافظة الإقامة",
+  injuryGov:"محافظة الاصابة", date:"تاريخ الوفاة", cat:"صنف الضحية", lat:"latitude", lng:"longitude",
+  // New fields. Leave as null to auto-detect from the column headers,
+  // or write the exact column name from your sheet, e.g. withheld:"احتجاز الجثمان"
+  withheld:null, perpetrator:null, tool:null
+};
+
+// auto-detection patterns (applied to normalised column headers)
+const DETECT = {
+  withheld:   /احتجاز|محتجز|جثمان|جثه|withh|detain/i,
+  perpetrator:/منفذ|الجهه|مرتكب|فاعل|perpetrator/i,
+  tool:       /اداه|وسيله|سلاح|tool|weapon/i
+};
+
+const CATS = {
+  boy:   {label:"Boy",   color:"#f2c14e"},
+  girl:  {label:"Girl",  color:"#f28fad"},
+  woman: {label:"Woman", color:"#4fc3a1"},
+  man:   {label:"Man",   color:"#e63946"},
+  other: {label:"Unknown", color:"#8a8a8a"}
+};
+const WITHHELD = {
+  yes:{label:"Withheld"}, no:{label:"Not withheld"}, unk:{label:"Unknown"}
+};
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+/* ================= HELPERS ================= */
+const norm = s => String(s||"").trim().replace(/[أإآ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي").replace(/\s+/g," ");
+const esc  = s => String(s ?? "").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const GOVS = [
+  ["شمال غزة","North Gaza"],["دير البلح","Deir al-Balah"],["خان يونس","Khan Younis"],["رفح","Rafah"],["غزة","Gaza"],
+  ["رام الله","Ramallah & al-Bireh"],["اريحا","Jericho & Jordan Valley"],["أريحا","Jericho & Jordan Valley"],
+  ["بيت لحم","Bethlehem"],["الخليل","Hebron"],["القدس","Jerusalem"],["نابلس","Nablus"],["جنين","Jenin"],
+  ["طولكرم","Tulkarm"],["قلقيلية","Qalqilya"],["سلفيت","Salfit"],["طوباس","Tubas"]
+].map(([ar,en])=>[norm(ar),en]);
+function govEn(v){
+  const n = norm(v); if(!n) return "Unknown";
+  for(const [ar,en] of GOVS) if(n.includes(ar)) return en;
+  return String(v).trim();
+}
+function catKey(v){
+  const n = norm(v);
+  if(n==="طفل") return "boy";
+  if(n.startsWith("طفله")) return "girl";
+  if(n.startsWith("امر")) return "woman";
+  if(n==="رجل") return "man";
+  return "other";
+}
+function withheldKey(v){
+  const n = norm(v).toLowerCase();
+  if(!n) return "unk";
+  if(/^(لا|كلا|no|false|0)$/.test(n) || n.includes("غير") || n.includes("لا يوجد") || n.includes("not")) return "no";
+  if(/^(نعم|yes|true|1)$/.test(n) || n.includes("محتجز") || n.includes("نعم") || n.includes("withheld")) return "yes";
+  return "unk";
+}
+function cleanVal(v){ const s = String(v ?? "").trim(); return s || "Unknown"; }
+function parseDate(s){
+  if(!s) return null;
+  let d = new Date(s);
+  if(!isNaN(d)) return d;
+  const m = String(s).match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if(m){ d = new Date(+m[3], +m[2]-1, +m[1]); if(!isNaN(d)) return d; }
+  return null;
+}
+function fmtDate(d){
+  if(!d) return "—";
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+const monthIdx = d => d.getFullYear()*12 + d.getMonth();
+const monthLabel = i => `${MONTHS[i%12]} ${Math.floor(i/12)}`;
+const debounce=(fn,ms=200)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms)}};
+
+/* ================= MAP ================= */
+const map = L.map("map",{zoomControl:true,preferCanvas:true}).setView([31.9,35.2],8);
+map.attributionControl.setPosition("topright");
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",{
+  attribution:'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ', maxZoom:16
+}).addTo(map);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",{
+  maxZoom:16, pane:"shadowPane"
+}).addTo(map);
+
+const cluster = L.markerClusterGroup({chunkedLoading:true,showCoverageOnHover:false,maxClusterRadius:38,spiderfyOnMaxZoom:true});
+map.addLayer(cluster);
+
+/* ================= STATE ================= */
+let RECORDS = [];
+let MONTH_MIN = 0, MONTH_MAX = 0;          // absolute month indexes
+const state = {
+  govs:new Set(), cats:new Set(), withheld:new Set(), perps:new Set(), tools:new Set(),
+  from:"", to:"", q:"",
+  tl:null            // null = all months; otherwise absolute month index (cumulative "through")
+};
+let playTimer = null;
+
+/* ================= LOAD ================= */
+function detectKey(rows, preset, re){
+  if(preset) return preset;
+  const keys = new Set(); rows.slice(0,50).forEach(r=>Object.keys(r).forEach(k=>keys.add(k)));
+  for(const k of keys) if(re.test(norm(k))) return k;
+  return null;
+}
+
+fetch(DATA_URL)
+  .then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
+  .then(rows=>{
+    const K = {
+      withheld:    detectKey(rows,F.withheld,    DETECT.withheld),
+      perpetrator: detectKey(rows,F.perpetrator, DETECT.perpetrator),
+      tool:        detectKey(rows,F.tool,        DETECT.tool)
+    };
+    console.log("Detected columns:", K, "All columns:", rows[0] && Object.keys(rows[0]));
+    showWarn("withheld",    K.withheld);
+    showWarn("perp",        K.perpetrator);
+    showWarn("tool",        K.tool);
+
+    RECORDS = rows.map(r=>{
+      const lat = parseFloat(r[F.lat]), lng = parseFloat(r[F.lng]);
+      return {
+        name: (r[F.name]||r[F.fileTitle]||"Unknown").toString().trim(),
+        age: r[F.age]===undefined||r[F.age]===""? "—" : r[F.age],
+        residence: govEn(r[F.residence]),
+        gov: govEn(r[F.injuryGov]),
+        date: parseDate(r[F.date]),
+        cat: catKey(r[F.cat]),
+        withheld: K.withheld ? withheldKey(r[K.withheld]) : "unk",
+        perp: K.perpetrator ? cleanVal(r[K.perpetrator]) : "Unknown",
+        tool: K.tool ? cleanVal(r[K.tool]) : "Unknown",
+        lat: isNaN(lat)?null:lat, lng: isNaN(lng)?null:lng,
+        search: norm(r[F.name]||r[F.fileTitle]||"").toLowerCase()
+      };
+    });
+
+    const idxs = RECORDS.filter(r=>r.date).map(r=>monthIdx(r.date));
+    if(idxs.length){ MONTH_MIN = Math.min(...idxs); MONTH_MAX = Math.max(...idxs); }
+    setupTimeline();
+
+    // ---- Last updated: date of the most recent record ----
+    const latest = RECORDS.reduce((mx,r)=> (r.date && r.date.getTime()>mx) ? r.date.getTime() : mx, 0);
+    if(latest){
+      document.getElementById("updated").innerHTML = `Last updated: <b>${fmtDate(new Date(latest))}</b>`;
+    }
+
+    buildChips("govChips","gov",state.govs);
+    buildWithheldChips();
+    buildChips("perpChips","perp",state.perps);
+    buildChips("toolChips","tool",state.tools);
+
+    document.getElementById("status").classList.add("hide");
+    render();
+  })
+  .catch(err=>{
+    console.error(err);
+    document.getElementById("status").textContent = "Could not load data. Please refresh the page.";
+  });
+
+function showWarn(id,key){
+  if(key) return;
+  const el = document.getElementById("warn-"+id);
+  el.hidden = false;
+  el.textContent = "Column not found in the sheet — set its exact name in F inside the code.";
+}
+
+/* ================= FILTER UI ================= */
+function buildChips(boxId, prop, set){
+  const counts = {};
+  RECORDS.forEach(r=>counts[r[prop]]=(counts[r[prop]]||0)+1);
+  const box = document.getElementById(boxId);
+  box.innerHTML = "";
+  Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(g=>{
+    const b = document.createElement("button");
+    b.className="chip"; b.dataset.val=g;
+    b.innerHTML = `${esc(g)}<em>${counts[g]}</em>`;
+    b.onclick=()=>{ set.has(g)?set.delete(g):set.add(g); b.classList.toggle("on"); render(); };
+    box.appendChild(b);
+  });
+}
+function buildWithheldChips(){
+  const counts = {yes:0,no:0,unk:0};
+  RECORDS.forEach(r=>counts[r.withheld]++);
+  const box = document.getElementById("withheldChips");
+  box.innerHTML = "";
+  ["yes","no","unk"].forEach(k=>{
+    if(!counts[k]) return;
+    const b = document.createElement("button");
+    b.className="chip"; b.dataset.val=k;
+    b.innerHTML = `${WITHHELD[k].label}<em>${counts[k]}</em>`;
+    b.onclick=()=>{ state.withheld.has(k)?state.withheld.delete(k):state.withheld.add(k); b.classList.toggle("on"); render(); };
+    box.appendChild(b);
+  });
+}
+
+document.querySelectorAll(".stat").forEach(btn=>{
+  btn.onclick=()=>{ const c=btn.dataset.cat; state.cats.has(c)?state.cats.delete(c):state.cats.add(c); render(); };
+});
+document.getElementById("q").addEventListener("input",debounce(e=>{state.q=norm(e.target.value).toLowerCase();render();}));
+document.getElementById("from").addEventListener("change",e=>{state.from=e.target.value;render();});
+document.getElementById("to").addEventListener("change",e=>{state.to=e.target.value;render();});
+document.getElementById("reset").onclick=()=>{
+  state.govs.clear(); state.cats.clear(); state.withheld.clear(); state.perps.clear(); state.tools.clear();
+  state.from=state.to=state.q=""; state.tl=null; stopPlay();
+  ["q","from","to"].forEach(id=>document.getElementById(id).value="");
+  document.querySelectorAll(".chip.on").forEach(c=>c.classList.remove("on"));
+  render();
+};
+
+/* ================= TIMELINE CONTROLS ================= */
+const tlEl = document.getElementById("tl");
+const rangeEl = document.getElementById("tlRange");
+
+document.getElementById("tlToggle").onclick = ()=> tlEl.classList.toggle("closed");
+
+function setupTimeline(){
+  const n = MONTH_MAX - MONTH_MIN;
+  rangeEl.min = 0; rangeEl.max = n; rangeEl.value = n;
+  document.getElementById("tlMin").textContent = monthLabel(MONTH_MIN);
+  document.getElementById("tlMax").textContent = monthLabel(MONTH_MAX);
+}
+rangeEl.addEventListener("input",()=>{ stopPlay(); state.tl = MONTH_MIN + (+rangeEl.value); render(); });
+document.getElementById("tlAll").onclick = ()=>{ stopPlay(); state.tl = null; render(); };
+document.getElementById("tlPrev").onclick = ()=>{ stopPlay(); step(-1); };
+document.getElementById("tlNext").onclick = ()=>{ stopPlay(); step(1); };
+document.getElementById("tlPlay").onclick = ()=>{ playTimer ? stopPlay() : startPlay(); };
+
+function step(d){
+  let cur = state.tl===null ? MONTH_MAX : state.tl;
+  cur = Math.min(MONTH_MAX, Math.max(MONTH_MIN, cur + d));
+  state.tl = cur; render();
+}
+function startPlay(){
+  if(state.tl===null || state.tl>=MONTH_MAX) state.tl = MONTH_MIN;
+  document.getElementById("tlPlay").textContent = "Pause";
+  render();
+  playTimer = setInterval(()=>{
+    if(state.tl >= MONTH_MAX){ stopPlay(); return; }
+    state.tl++; render();
+  }, 500);
+}
+function stopPlay(){
+  if(playTimer){ clearInterval(playTimer); playTimer = null; }
+  document.getElementById("tlPlay").textContent = "Play";
+}
+
+function drawTimeline(baseNoTl, shown){
+  // monthly counts from everything except the timeline cap itself
+  const n = MONTH_MAX - MONTH_MIN + 1;
+  const counts = new Array(n).fill(0);
+  let dated = 0;
+  baseNoTl.forEach(r=>{ if(r.date){ counts[monthIdx(r.date)-MONTH_MIN]++; dated++; } });
+  const max = Math.max(1, ...counts);
+
+  const bars = document.getElementById("tlBars");
+  bars.innerHTML = "";
+  counts.forEach((c,i)=>{
+    const b = document.createElement("div");
+    const abs = MONTH_MIN + i;
+    b.className = "b" + (c===0?" z":"") + (state.tl!==null && abs>state.tl ? " off":"");
+    b.style.height = c ? Math.max(3, Math.round(c/max*40)) + "px" : "1px";
+    b.title = `${monthLabel(abs)} — ${c.toLocaleString()}`;
+    b.onclick = ()=>{ stopPlay(); state.tl = abs; render(); };
+    bars.appendChild(b);
+  });
+
+  rangeEl.value = (state.tl===null ? MONTH_MAX : state.tl) - MONTH_MIN;
+  document.getElementById("tlLabel").textContent = state.tl===null ? "All months" : "Through " + monthLabel(state.tl);
+  document.getElementById("tlCount").textContent = shown.length.toLocaleString() + " incidents";
+  document.getElementById("tlAll").classList.toggle("on", state.tl===null);
+  const undated = baseNoTl.length - dated;
+  document.getElementById("tlFoot").textContent =
+    `${dated.toLocaleString()} incidents with a valid date are on the timeline` +
+    (undated ? ` · ${undated.toLocaleString()} without a date` : "") +
+    (state.tl===null ? ". All months shown." : ".");
+}
+
+/* ================= RENDER ================= */
+function render(){
+  if(!RECORDS.length) return;
+  const from = state.from ? new Date(state.from+"T00:00:00") : null;
+  const to   = state.to   ? new Date(state.to+"T23:59:59.999") : null;
+
+  // everything except category + timeline cap
+  const baseNoTl = RECORDS.filter(r=>
+    (!state.govs.size || state.govs.has(r.gov)) &&
+    (!state.withheld.size || state.withheld.has(r.withheld)) &&
+    (!state.perps.size || state.perps.has(r.perp)) &&
+    (!state.tools.size || state.tools.has(r.tool)) &&
+    (!state.q || r.search.includes(state.q)) &&
+    (!from || (r.date && r.date>=from)) &&
+    (!to   || (r.date && r.date<=to))
+  );
+  // timeline cap (cumulative); undated records are kept only in "All months"
+  const base = state.tl===null ? baseNoTl : baseNoTl.filter(r=>r.date && monthIdx(r.date)<=state.tl);
+  const shown = state.cats.size ? base.filter(r=>state.cats.has(r.cat)) : base;
+
+  // stats
+  const counts = {boy:0,girl:0,woman:0,man:0,other:0};
+  base.forEach(r=>counts[r.cat]++);
+  ["boy","girl","woman","man"].forEach(k=>document.getElementById("c-"+k).textContent = counts[k].toLocaleString());
+  document.querySelectorAll(".stat").forEach(b=>{
+    const on = state.cats.has(b.dataset.cat);
+    b.classList.toggle("active",on);
+    b.classList.toggle("dim",state.cats.size>0 && !on);
+  });
+  document.getElementById("total").textContent = shown.length.toLocaleString();
+  const noLoc = shown.filter(r=>r.lat===null||r.lng===null).length;
+  document.getElementById("noloc").textContent = noLoc ? `${noLoc} without location` : "";
+
+  drawMarkers(shown);
+  drawTimeline(baseNoTl, shown);
+}
+
+function drawMarkers(list){
+  cluster.clearLayers();
+  const groups = new Map();
+  list.forEach(r=>{
+    if(r.lat===null||r.lng===null) return;
+    const k = r.lat.toFixed(5)+","+r.lng.toFixed(5);
+    if(!groups.has(k)) groups.set(k,[]);
+    groups.get(k).push(r);
+  });
+
+  const layers = [];
+  groups.forEach(items=>{
+    const tally = {}; items.forEach(i=>tally[i.cat]=(tally[i.cat]||0)+1);
+    const dom = Object.keys(tally).sort((a,b)=>tally[b]-tally[a])[0];
+    const color = CATS[dom].color;
+
+    const m = L.circleMarker([items[0].lat,items[0].lng],{
+      radius: 6 + Math.min(items.length-1,6),
+      fillColor: color, color:"#000", weight:1, fillOpacity:.9
+    });
+    m.bindPopup(()=>popupHTML(items),{maxWidth:340});
+    layers.push(m);
+  });
+  cluster.addLayers(layers);
+}
+
+function popupHTML(items){
+  const head = items.length>1 ? `<div class="pop-count">${items.length} martyrs at this location</div>` : "";
+  const body = items.map(r=>`
+    <div class="pop">
+      <div class="name">${esc(r.name)}</div>
+      <span class="tag" style="background:${CATS[r.cat].color}">${CATS[r.cat].label}</span>
+      ${r.withheld==="yes" ? `<span class="tag w">Body withheld</span>` : ""}
+      <dl>
+        <dt>Age</dt><dd>${esc(r.age)}</dd>
+        <dt>Residence</dt><dd>${esc(r.residence)}</dd>
+        <dt>Killed in</dt><dd>${esc(r.gov)}</dd>
+        <dt>Date</dt><dd>${fmtDate(r.date)}</dd>
+        <dt>Body withheld</dt><dd>${WITHHELD[r.withheld].label}</dd>
+        <dt>Perpetrator</dt><dd>${esc(r.perp)}</dd>
+        <dt>Killing tool</dt><dd>${esc(r.tool)}</dd>
+      </dl>
+    </div>`).join("");
+  return head + `<div class="pop-scroll">${body}</div>`;
+}
+</script>
+</body>
+</html>
