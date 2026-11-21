@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
@@ -345,7 +344,16 @@ fetch("https://tiles.openfreemap.org/styles/liberty")
       .filter(l => l.type === "symbol" && l["source-layer"] === "place")
       .map(l => {
         l.layout = l.layout || {};
-        l.layout["text-field"] = ["get", "name:ar"];   // Arabic only — if missing, nothing is drawn
+        // Arabic on top + English underneath. Never uses the default (Hebrew) name.
+        l.layout["text-field"] = ["case",
+          ["all", ["has", "name:ar"], ["has", "name:en"]],
+            ["concat", ["get", "name:ar"], "\n", ["get", "name:en"]],
+          ["has", "name:ar"], ["get", "name:ar"],
+          ["has", "name:en"], ["get", "name:en"],
+          ""
+        ];
+        l.layout["text-max-width"] = 8;
+        l.layout["text-line-height"] = 1.25;
         delete l.layout["icon-image"];
         delete l.layout["text-transform"];
         l.paint = Object.assign({}, l.paint, {
