@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
@@ -13,6 +14,11 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<!-- Arabic-only place labels (MapLibre vector layer) -->
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
 
 <style>
   :root{
@@ -82,6 +88,9 @@
   .leaflet-control-zoom a{background:#111!important;color:#fff!important;border-color:#333!important}
   .leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:#777!important}
   .leaflet-control-attribution a{color:#999!important}
+
+  /* Arabic labels layer must never block clicks on markers */
+  .maplibregl-canvas-container, .maplibregl-canvas{pointer-events:none!important}
 
   .leaflet-popup-content-wrapper{background:#121212;color:var(--text);border:1px solid #2c2c2c;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
   .leaflet-popup-tip{background:#121212}
@@ -310,12 +319,45 @@ const debounce=(fn,ms=200)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout((
 /* ================= MAP ================= */
 const map = L.map("map",{zoomControl:true,preferCanvas:true}).setView([31.9,35.2],8);
 map.attributionControl.setPosition("topright");
+
+// Dark base map — NO built-in labels (the old "Reference" layer was removed,
+// it was the one showing Hebrew names)
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",{
-  attribution:'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ', maxZoom:16
+  attribution:'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ | Labels &copy; OpenFreeMap, OpenStreetMap contributors', maxZoom:16
 }).addTo(map);
-L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",{
-  maxZoom:16, pane:"shadowPane"
-}).addTo(map);
+
+/* ===== Arabic-only place names (cities + towns + villages + camps) ===== */
+// dedicated pane ABOVE the base tiles (the labels were hidden behind them before)
+map.createPane("arLabels");
+map.getPane("arLabels").style.zIndex = 250;
+map.getPane("arLabels").style.pointerEvents = "none";
+
+// Needed so Arabic letters are joined and ordered correctly
+maplibregl.setRTLTextPlugin(
+  "https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js", true
+);
+
+fetch("https://tiles.openfreemap.org/styles/liberty")
+  .then(r => r.json())
+  .then(style => {
+    // keep only place-name label layers
+    style.layers = style.layers
+      .filter(l => l.type === "symbol" && l["source-layer"] === "place")
+      .map(l => {
+        l.layout = l.layout || {};
+        l.layout["text-field"] = ["get", "name:ar"];   // Arabic only — if missing, nothing is drawn
+        delete l.layout["icon-image"];
+        delete l.layout["text-transform"];
+        l.paint = Object.assign({}, l.paint, {
+          "text-color": "#b5b5b5",
+          "text-halo-color": "#000",
+          "text-halo-width": 1.5
+        });
+        return l;
+      });
+    L.maplibreGL({ style, pane: "arLabels" }).addTo(map);
+  })
+  .catch(e => console.warn("Arabic labels failed to load", e));
 
 const cluster = L.markerClusterGroup({
   chunkedLoading:true, showCoverageOnHover:false, maxClusterRadius:38, spiderfyOnMaxZoom:true,
