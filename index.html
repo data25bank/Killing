@@ -319,19 +319,16 @@ const debounce=(fn,ms=200)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout((
 const map = L.map("map",{zoomControl:true,preferCanvas:true}).setView([31.9,35.2],8);
 map.attributionControl.setPosition("topright");
 
-// Dark base map — NO built-in labels (the old "Reference" layer was removed,
-// it was the one showing Hebrew names)
+// Dark base map — NO built-in labels
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",{
   attribution:'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ | Labels &copy; OpenFreeMap, OpenStreetMap contributors', maxZoom:16
 }).addTo(map);
 
 /* ===== Arabic-only place names (cities + towns + villages + camps) ===== */
-// dedicated pane ABOVE the base tiles (the labels were hidden behind them before)
 map.createPane("arLabels");
 map.getPane("arLabels").style.zIndex = 250;
 map.getPane("arLabels").style.pointerEvents = "none";
 
-// Needed so Arabic letters are joined and ordered correctly
 maplibregl.setRTLTextPlugin(
   "https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js", true
 );
@@ -339,12 +336,10 @@ maplibregl.setRTLTextPlugin(
 fetch("https://tiles.openfreemap.org/styles/liberty")
   .then(r => r.json())
   .then(style => {
-    // keep only place-name label layers
     style.layers = style.layers
       .filter(l => l.type === "symbol" && l["source-layer"] === "place")
       .map(l => {
         l.layout = l.layout || {};
-        // Arabic on top + English underneath. Never uses the default (Hebrew) name.
         l.layout["text-field"] = ["case",
           ["all", ["has", "name:ar"], ["has", "name:en"]],
             ["concat", ["get", "name:ar"], "\n", ["get", "name:en"]],
@@ -455,31 +450,41 @@ function showWarn(id,key){
 }
 
 /* ================= FILTER UI ================= */
+// Chips are built ONCE (ordered by overall frequency); their numbers are
+// refreshed on every render() by updateChipCounts().
 function buildChips(boxId, prop, set){
-  const counts = {};
-  RECORDS.forEach(r=>counts[r[prop]]=(counts[r[prop]]||0)+1);
+  const total = {};
+  RECORDS.forEach(r=>total[r[prop]]=(total[r[prop]]||0)+1);
   const box = document.getElementById(boxId);
   box.innerHTML = "";
-  Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(g=>{
+  Object.keys(total).sort((a,b)=>total[b]-total[a]).forEach(g=>{
     const b = document.createElement("button");
     b.className="chip"; b.dataset.val=g;
-    b.innerHTML = `${esc(g)}<em>${counts[g]}</em>`;
+    b.innerHTML = `${esc(g)}<em>0</em>`;
     b.onclick=()=>{ set.has(g)?set.delete(g):set.add(g); b.classList.toggle("on"); render(); };
     box.appendChild(b);
   });
 }
 function buildWithheldChips(){
-  const counts = {yes:0,no:0,unk:0};
-  RECORDS.forEach(r=>counts[r.withheld]++);
   const box = document.getElementById("withheldChips");
   box.innerHTML = "";
   ["yes","no","unk"].forEach(k=>{
-    if(!counts[k]) return;
+    if(!RECORDS.some(r=>r.withheld===k)) return;
     const b = document.createElement("button");
     b.className="chip"; b.dataset.val=k;
-    b.innerHTML = `${WITHHELD[k].label}<em>${counts[k]}</em>`;
+    b.innerHTML = `${WITHHELD[k].label}<em>0</em>`;
     b.onclick=()=>{ state.withheld.has(k)?state.withheld.delete(k):state.withheld.add(k); b.classList.toggle("on"); render(); };
     box.appendChild(b);
+  });
+}
+// recompute the numbers inside one chip group
+function updateChipCounts(boxId, prop, list){
+  const counts = {};
+  list.forEach(r=>counts[r[prop]]=(counts[r[prop]]||0)+1);
+  document.querySelectorAll(`#${boxId} .chip`).forEach(ch=>{
+    const n = counts[ch.dataset.val]||0;
+    ch.querySelector("em").textContent = n.toLocaleString();
+    ch.style.opacity = (n===0 && !ch.classList.contains("on")) ? ".4" : "";
   });
 }
 
@@ -598,6 +603,25 @@ function render(){
   const noLoc = shown.filter(r=>r.lat===null||r.lng===null).length;
   document.getElementById("noloc").textContent = noLoc ? `${noLoc} without location` : "";
 
+  // ---- live counts on the filter chips ----
+  // Each group ignores only its OWN selection, but respects every other filter
+  // (so picking "Tulkarm" makes Perpetrator / Killing tool / Body withheld show Tulkarm-only numbers).
+  const chipBase = skip => RECORDS.filter(r=>
+    (skip==="gov"      || !state.govs.size     || state.govs.has(r.gov)) &&
+    (skip==="withheld" || !state.withheld.size || state.withheld.has(r.withheld)) &&
+    (skip==="perp"     || !state.perps.size    || state.perps.has(r.perp)) &&
+    (skip==="tool"     || !state.tools.size    || state.tools.has(r.tool)) &&
+    (!state.q || r.search.includes(state.q)) &&
+    (!from || (r.date && r.date>=from)) &&
+    (!to   || (r.date && r.date<=to)) &&
+    (state.tl===null || (r.date && monthIdx(r.date)<=state.tl)) &&
+    (!state.cats.size || state.cats.has(r.cat))
+  );
+  updateChipCounts("govChips",      "gov",      chipBase("gov"));
+  updateChipCounts("withheldChips", "withheld", chipBase("withheld"));
+  updateChipCounts("perpChips",     "perp",     chipBase("perp"));
+  updateChipCounts("toolChips",     "tool",     chipBase("tool"));
+
   drawMarkers(shown);
   drawTimeline(baseNoTl, shown);
 }
@@ -618,7 +642,7 @@ function drawMarkers(list){
     const dom = Object.keys(tally).sort((a,b)=>tally[b]-tally[a])[0];
     const color = CATS[dom].color;
 
-     const m = L.circleMarker([items[0].lat,items[0].lng],{
+    const m = L.circleMarker([items[0].lat,items[0].lng],{
       radius: 6 + Math.min(items.length-1,6),
       fillColor: color, color:"#000", weight:1, fillOpacity:.9,
       count: items.length
